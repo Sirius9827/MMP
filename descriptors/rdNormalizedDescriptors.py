@@ -42,7 +42,7 @@ for name, (dist, params, minV,maxV,avg,std) in dists.dists.items():
     loc = params[-2]
     scale = params[-1]
 
-    dist = getattr(st, dist)
+    dist = getattr(st, 'gumbel_r')
     
     # make the cdf with the parameters
     def cdf(v, dist=dist, arg=arg,loc=loc,scale=scale,minV=minV,maxV=maxV):
