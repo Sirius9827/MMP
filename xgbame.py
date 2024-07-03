@@ -9,7 +9,7 @@ from sklearn.metrics import roc_auc_score
 from sklearn.metrics import f1_score
 from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_squared_error #for regression task
 from sklearn.metrics import mean_absolute_error
 import pandas as pd  
 import pandas_flavor as pf  
@@ -48,15 +48,37 @@ predictions_list = []
 X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=1234)
 predictions = {}
 
+#params
+# params = {
+#     'booster': 'gbtree',
+#     'objective': 'reg:gamma',
+#     'gamma': 0.1,
+#     'max_depth': 5,
+#     'lambda': 3,
+#     'subsample': 0.7,
+#     'colsample_bytree': 0.7,
+#     'min_child_weight': 3,
+#     'slient': 1,
+#     'eta': 0.1,
+#     'seed': 1000,
+#     'nthread': 4,
+# }
+
+
 # Train XGBoost Model  
 xgb_model = XGBClassifier()  # You can adjust the parameters  
 xgb_model.fit(X_train, y_train)  
 y_pred_test_xgb = xgb_model.predict(X_test)  
-accuracy_xgb = accuracy_score(y_test, y_pred_test_xgb)  
+accuracy_xgb = accuracy_score(y_test, y_pred_test_xgb)
+auc_xgb = roc_auc_score(y_test, y_pred_test_xgb)
+
 print("XGBoost Accuracy:", accuracy_xgb)  
+print("AUC", auc_xgb)
 
 print("Accuracy:", accuracy_xgb)  
 print("Classification Report:")  
+
+
     
 predictions[name] = y_pred_test_xgb
 predictions_list.append(predictions)
