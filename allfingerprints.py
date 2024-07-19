@@ -10,6 +10,7 @@ from skfp.fingerprints import AvalonFingerprint, ECFPFingerprint, E3FPFingerprin
 from skfp.fingerprints import MQNsFingerprint
 from skfp.preprocessing import MolFromSmilesTransformer, ConformerGenerator
 from rdkit import DataStructs
+from sklearn.preprocessing import StandardScaler
 
 # Fingerprints are classified based on binary, count, real-valued features
 
@@ -119,21 +120,42 @@ class FingerprintProcessor:
     def concat_fp(self, smiles_list):
         """Concatenate different types of fingerprints into a single feature vector per molecule."""
         # Generate fingerprints
-        rdkit_fps = self.get_rdkit_fingerprints(smiles_list)
-        substructure_fps = self.get_substructure_fingerprints(smiles_list)
+        pubchem_fps = self.pubchem_fp(smiles_list)
+        morgan_fps = self.Morgan_fp(smiles_list)
+        #substructure_fps = self.get_substructure_fingerprints(smiles_list)
         maccs_fps = self.MACCSkeys_fp(smiles_list)
+        laggner_fps = self.laggner_fp(smiles_list)
+        fcep_fps = self.ECFP_fp(smiles_list)
+
+        # # check data_type
+        # print(type(pubchem_fps))
+        # print(type(morgan_fps))
+        # #print(type(substructure_fps))
+        # print(type(maccs_fps))
+        # print(type(laggner_fps))
+              
 
         concatenated_fps = []
-        for rdkit_fp, substructure_fp, maccs_fp in zip(rdkit_fps, substructure_fps, maccs_fps):
+        for pubchem_fp, morgan_fp, maccs_fp, laggner_fp, fcep_fp in zip(pubchem_fps, morgan_fps, maccs_fps, laggner_fps, fcep_fps):
             # Convert RDKit ExplicitBitVect to list of integers
-            list_rdkit_fp = [int(bit) for bit in DataStructs.BitVectToText(rdkit_fp)]
-            list_substructure_fp = [int(bit) for bit in DataStructs.BitVectToText(substructure_fp)]
-            list_maccs_fp = [int(bit) for bit in DataStructs.BitVectToText(maccs_fp)]
+            np_morgan_fp = np.array(morgan_fp)
+            #np_substructure_fp = np.array(substructure_fp)
+            np_maccs_fp = np.array(maccs_fp)
+            np_fcep_fp = np.array(fcep_fp)
             
             # Concatenate the fingerprints
-            concatenated_fp = list_rdkit_fp + list_substructure_fp + list_maccs_fp
+            concatenated_fp = np.concatenate((pubchem_fp, np_morgan_fp, np_maccs_fp, laggner_fp, np_fcep_fp))
             concatenated_fps.append(concatenated_fp)
-        
+
+            # # Convert concatenated_fps to a NumPy array
+            # concatenated_fps_array = np.array(concatenated_fps)
+
+            # # Instantiate the StandardScaler
+            # scaler = StandardScaler()
+
+            # # Fit the scaler to the data and transform the data
+            # normalized_fps = scaler.fit_transform(concatenated_fps_array)
+                    
         return concatenated_fps
 
 # Example usage

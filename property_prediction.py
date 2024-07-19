@@ -43,6 +43,7 @@ def parse_args():
     #parser.add_argument("--data_path", type=str, required=True, help="Path to the dataset directory")
     parser.add_argument("--dataset_name", type=str, required=True, help="Name of the dataset file")
     parser.add_argument("--model", type=str, required=True, choices=['SVM', 'XGB', 'RF', 'all'], help="Model to use")
+    parser.add_argument("--n_jobs", type=int, default=1, help="Number of jobs to run in parallel.")
     #parser.add_argument("--n_jobs", type=int, default=32, help="Number of jobs to run in parallel")
     return parser.parse_args()
 
@@ -229,7 +230,7 @@ class MMPmodel:
         return results
         #save_results(results, args.dataset_name, args.model)
 
-    def save_results(self, results, dataset_name, model, results_dir='finetune_results'):
+    def save_results(self, results, dataset_name, model, results_dir='results1'):
         """
         Saves the evaluation results to a CSV file.
 
@@ -257,13 +258,14 @@ class MMPmodel:
 
 
 class ModelTuner:
-    def __init__(self, model, param_grid, X_train, y_train, X_val, y_val):
+    def __init__(self, model, param_grid, X_train, y_train, X_val, y_val, n_jobs=1):
         self.model = model
         self.param_grid = param_grid
         self.X_train = X_train
         self.y_train = y_train
         self.X_val = X_val
         self.y_val = y_val
+        self.n_jobs = n_jobs
         self.task_binary = False
 
     def tune_parameters(self):
@@ -271,12 +273,12 @@ class ModelTuner:
             # Define the AUC scorer
             auc_scorer = make_scorer(roc_auc_score, needs_proba=True, greater_is_better=True)
             # Initialize GridSearchCV
-            grid_search = GridSearchCV(estimator=self.model, param_grid=self.param_grid, scoring=auc_scorer, cv=5, verbose=1)
+            grid_search = GridSearchCV(estimator=self.model, param_grid=self.param_grid, scoring=auc_scorer, cv=5, verbose=1, n_jobs=self.n_jobs)
         # Initialize GridSearchCV with MSE scorer
         else:
             # Define the MSE scorer
             mse_scorer = make_scorer(mean_squared_error, greater_is_better=False)
-            grid_search = GridSearchCV(estimator=self.model, param_grid=self.param_grid, scoring=mse_scorer, cv=5, verbose=1)
+            grid_search = GridSearchCV(estimator=self.model, param_grid=self.param_grid, scoring=mse_scorer, cv=5, verbose=1, n_jobs=self.n_jobs)
     
         # Fit GridSearchCV
         grid_search.fit(self.X_train, self.y_train)
@@ -307,47 +309,43 @@ if __name__ == "__main__":
     # X_train, X_val, X_test, y_train, y_val, y_test = mmp_model.process_dataset(dataset)
     # mmp_model.task_binary(y_train)
     if args.model == 'all':
-        for model in ['XGB', 'RF']:
+        for model in ['SVM', 'XGB', 'RF']:
             model_instance = mmp_model.get_model(model)  # Instantiate the model
             if model == 'SVM':
                 # Tune the parameters for SVM
                 param_grid = {
                     'C': [0.1, 1, 10, 100],
-                    'gamma': [1, 0.1, 0.01, 0.001],
-                    'kernel': ['rbf', 'linear', 'poly', 'sigmoid']
+                    'gamma': [0.2, 0.1, 0.01, 0.001],
+                    'kernel': ['rbf']
                 }
                 
             elif model == 'XGB':
                 # Tune the parameters for XGB
                 param_grid = {
-                    'n_estimators': [100, 200, 300, 400, 500],
-                    'max_depth': [3, 4, 5],
-                    'learning_rate': [0.05, 0.1, 0.3],
-                    'subsample': [0.7, 0.8, 0.9],
-                    'colsample_bytree': [0.7, 0.8, 0.9],
+                    'n_estimators': [50, 100, 200, 300, 400, 500, 1000],
+                    'max_depth': [3, 4, 5, 6, 7, 8, 9, 10],
+                    'learning_rate': [0.01, 0.05, 0.1, 0.15, 0.2],
+                    'subsample': [0.7, 0.8, 0.9, 1.0],
+                    'colsample_bytree': [0.7, 0.8, 0.9, 1.0],
                     'colsample_bylevel': [0.7, 0.8, 0.9],
                     #add more parameters as needed
-                    'gamma': [0.1, 0.2, 0.3],
-                    'min_child_weight': [1, 3, 6],
+                    'gamma': [0, 0.1, 0.2],
+                    'min_child_weight': [1, 2, 3, 4, 5, 6],
                     }
                 
             elif model == 'RF':
                 # Tune the parameters for RF
                 if task_binary:
                     param_grid = {
-                        'n_estimators': [100, 200, 500],
-                        'max_features': ['sqrt', 'log2', None],
-                        'max_depth': [4, 6, 8],
-                        'criterion': ['gini', 'entropy']
+                        'n_estimators': [50, 100, 200, 300, 400, 500, 1000],
+                        'max_features': ['sqrt', 'log2', 0.7, 0.8, 0.9],
+                        'max_depth': [3, 4, 6, 8, 10, 12],
+                        'min_samples_leaf': [1, 3, 5, 10, 20, 50],
+                        'min_inpurity_decrease': [0.0, 0.01],
+                        'criterion': ['gini', 'entropy' if task_binary else 'mse']
                     }
-                else:
-                    param_grid = {
-                        'n_estimators': [100, 200, 500],
-                        'max_features': ['sqrt', 'log2', None],
-                        'max_depth': [4, 6, 8],
-                        'criterion': ['mse', 'mae'],  # Corrected criteria
-                    }
-            tuner = ModelTuner(model_instance, param_grid, X_train, y_train, X_val, y_val)
+
+            tuner = ModelTuner(model_instance, param_grid, X_train, y_train, X_val, y_val, n_jobs=args.n_jobs)
             model_instance = tuner.tune_parameters()
 
             results = mmp_model.train_evaluate_model(X_train, X_val, X_test, y_train, y_val, y_test, model_instance)
