@@ -1,4 +1,5 @@
 import argparse
+from math import sqrt
 import numpy as np  
 from rdkit import Chem  
 from rdkit.Chem import AllChem 
@@ -9,6 +10,8 @@ from xgboost import XGBClassifier, XGBRegressor
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 # evaluation metrics for classification and regression
 from sklearn.metrics import accuracy_score, roc_auc_score, mean_squared_error, mean_absolute_error, f1_score, r2_score, classification_report
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import make_scorer, roc_auc_score
 
 import pandas as pd  
 import pandas_flavor as pf  
@@ -39,107 +42,95 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Cheminformatics Model Training and Evaluation")
     #parser.add_argument("--data_path", type=str, required=True, help="Path to the dataset directory")
     parser.add_argument("--dataset_name", type=str, required=True, help="Name of the dataset file")
-    parser.add_argument("--model", type=str, required=True, choices=['SVM', 'XGB', 'RF'], help="Model to use")
+    parser.add_argument("--model", type=str, required=True, choices=['SVM', 'XGB', 'RF', 'all'], help="Model to use")
     #parser.add_argument("--n_jobs", type=int, default=32, help="Number of jobs to run in parallel")
     return parser.parse_args()
 
+class DatasetLoader:
+    def __init__(self):
+        self.dataset_paths = {
+            'lipop': 'datasets/lipo/lipo.csv',
+            'bace': 'datasets/bace/bace.csv',
+            'bbbp': 'datasets/bbbp/bbbp.csv',
+            'esol': 'datasets/esol/esol.csv',
+            'sider': 'datasets/sider/sider.csv'
+        }
+        self.y_labels = {
+            'lipop': 'lipo',
+            'bace': 'Class',
+            'bbbp': 'p_np',
+            'esol': 'logSolubility',
+            'sider': 'multiple label'  # Placeholder, replace with actual Y label for 'sider'
+        }
 
+    def get_dataset(self, dataset_name):
+        if dataset_name in self.dataset_paths:
+            data = pd.read_csv(self.dataset_paths[dataset_name])
+        else:
+            data = self.initialize_custom_dataset(dataset_name)
+        return data
+
+    def initialize_custom_dataset(self, dataset_name):
+        # Initialize custom datasets based on dataset_name
+        if dataset_name in ['ToxCast', 'Tox21']:
+            # Toxicity prediction datasets
+            label_lists = retrieve_label_name_list(dataset_name)
+            return Tox(name=dataset_name, label_name=label_lists[0])
+        elif dataset_name in ['ClinTox']:
+            return Tox(name='ClinTox')
+        elif dataset_name in ['SARSCoV2_Vitro_Touret', 'HIV']:
+            # HTS datasets
+            return HTS(name=dataset_name)
+        elif dataset_name in ['PAMPA_NCATS', 'HIA_Hou', 'Pgp_Broccatelli', 'BBB_Martins', 'HydrationFreeEnergy_FreeSolv', 'ESOL']:
+            # ADME datasets
+            return ADME(name=dataset_name)
+        else:
+            # If dataset_name does not match any known datasets, return None or handle as appropriate
+            return None
+
+    def process_dataset(self, dataset_name, data):
+        if dataset_name in ['lipop', 'bace', 'bbbp', 'esol', 'sider']:
+            X = data['smiles']
+            # Use the dataset_name to get the correct Y label from the self.y_labels dictionary
+            Y_label = self.y_labels[dataset_name]
+            # Handle the case where there are multiple labels for a dataset
+            if isinstance(Y_label, list):
+                Y = data[Y_label]
+            else:
+                Y = data[Y_label]
+            X_train, X_temp, y_train, Y_temp = train_test_split(X, Y, test_size=0.2, random_state=42)
+            X_val, X_test, y_val, y_test = train_test_split(X_temp, Y_temp, test_size=0.5, random_state=1234)
+        else:
+            # Assuming custom datasets have a method get_split()
+            split = data.get_split(seed=42, frac = [0.8, 0.1, 0.1])
+            X_train, y_train = split['train']['Drug'], split['train']['Y']
+            X_val, y_val = split['valid']['Drug'], split['valid']['Y']
+            X_test, y_test = split['test']['Drug'], split['test']['Y']
+
+        # Process fingerprints for all datasets uniformly
+        fp = FingerprintProcessor()
+        X_train = fp.concat_fp(X_train)
+        X_val = fp.concat_fp(X_val)
+        X_test = fp.concat_fp(X_test)
+
+        return X_train, X_val, X_test, y_train, y_val, y_test
+
+    def get_task_binary(self, Y):
+        self.task_binary = len(np.unique(Y)) == 2
     
 class MMPmodel:
     def __init__(self, args):
         self.args = args
-        self.task_binary = True
-        self.data = self.get_dataset(args.dataset_name)
-        self.X_train, self.X_val, self.X_test, self.y_train, self.y_val, self.y_test = self.process_dataset(self.data)
-        self.model = self.get_model(args.model)
-        self.results = self.train_evaluate_model(self.X_train, self.X_val, self.X_test, self.y_train, self.y_val, self.y_test, self.model)
-
-    def get_dataset(self, dataset_name):
-        # Retrieve label names based on the dataset
-
-        
-        # Determine the dataset type based on its name and initialize accordingly
-        if dataset_name in ['ToxCast', 'Tox21']:
-            # Toxicity prediction datasets
-            label_lists = retrieve_label_name_list(dataset_name)
-            data = Tox(name = dataset_name, label_name = label_lists[0])
-        elif dataset_name in ['ClinTox']:
-            data = Tox(name = 'ClinTox')
-        elif dataset_name in ['SARSCoV2_Vitro_Touret', 'HIV']:
-            # HTS datasets
-            data = HTS(name = dataset_name)
-            #ADME datasets
-        elif dataset_name in ['PAMPA_NCATS', 'HIA_Hou','Pgp_Broccatelli','BBB_Martins']:
-            data = ADME(name = dataset_name)
-        elif dataset_name in ['HydrationFreeEnergy_FreeSolv', 'Lipo', 'ESOL']:
-            data = ADME(name = dataset_name)
-        
-        else:
-            raise ValueError(f"Dataset {dataset_name} is not recognized.")
-
-        return data
-
-    def get_task_binary(self, Y):
-        # Determine if the task is binary or regression
-        self.task_binary = True if len(np.unique(Y)) == 2 else False
-
-    def process_dataset(self, data):
-        # Convert dataset_name to the expected case, e.g., uppercase
-        #dataset_name = dataset_name.upper()  # Ensure dataset_name is uppercase
-        
-        # Get the split for the dataset
-        split = data.get_split()
-
-        # Get the SMILES and labels for the dataset
-        X_train, y_train = split['train']['Drug'], split['train']['Y']
-        X_val, y_val = split['valid']['Drug'], split['valid']['Y']
-        X_test, y_test = split['test']['Drug'], split['test']['Y']
-
-        #get pubchem fingerprints
-        fp = FingerprintProcessor()
-        X_train = fp.pubchem_fp(X_train)
-        X_val = fp.pubchem_fp(X_val)
-        X_test = fp.pubchem_fp(X_test)
-
-        return X_train, X_val, X_test, y_train, y_val, y_test
-        # print(X_train)
-        # print(X_val)
-        # print(type(X_train))
-        # print("X_train shape is:", X_train.shape)
-        # print("X_val shape is:", X_val.shape)
-    '''
-        #Create dataset with RDKit2D descriptors
-        rdkit2d = RDKit2DNormalized()
-        x_test_mol, X_train = rdkit2d.processSmiles(X_train)
-        x_val_mol, X_val = rdkit2d.processSmiles(X_val)
-        x_test_mol, X_test = rdkit2d.processSmiles(X_test)
-        
-        #Treat Nan values
-        imputer = SimpleImputer(missing_values=np.nan, strategy='mean')
-        X_train = imputer.fit_transform(X_train)
-        X_val = imputer.transform(X_val)
-        X_test = imputer.transform(X_test)
-        # try:
-        #     print("X_train shape after is:", len(X_train))
-        #     print("X_val shape after is:", len(X_val))
-        # except TypeError:
-        #     print("Error in shape")
-
-        # sequences = X_train
-        # Calculate the lengths of all sequences
-        # lengths = [len(seq) for seq in sequences]
-        # print("the length for X_train is:",lengths)
-        # print("the length for X_val is:",len(X_val))
-    '''   
-        
-
-    # # Main function
-    # if __name__ == "__main__":
-    #     args = parse_args()
-    #     X_train, X_val, y_train, y_val = process_dataset(args.dataset_name)
-    #     # model = get_model(args.model)
-    #     # train_evaluate_model(X_train, X_test, y_train, y_test, model)
-    #     print(X_val)
+        self.task_binary = False
+        # self.data = self.get_dataset(args.dataset_name)
+        self.X_train = X_train
+        self.X_val = X_val
+        self.X_test = X_test
+        self.y_train = y_train
+        self.y_val = y_val
+        self.y_test = y_test
+        # self.model = self.get_model(model)
+        # self.results = self.train_evaluate_model(self.X_train, self.X_val, self.X_test, self.y_train, self.y_val, self.y_test, self.model)
 
     # Define model based on user input
     def get_model(self, model_name):
@@ -213,29 +204,32 @@ class MMPmodel:
         else:
             predictions_val = model.predict(X_val)
             mse_val = mean_squared_error(y_val, predictions_val)
+            rmse_val = sqrt(mse_val)  # Calculate RMSE for validation set
             mae_val = mean_absolute_error(y_val, predictions_val)
             r2_val = r2_score(y_val, predictions_val)
 
             # Evaluate on test set
             predictions_test = model.predict(X_test)
             mse_test = mean_squared_error(y_test, predictions_test)
+            rmse_test = sqrt(mse_test)
             mae_test = mean_absolute_error(y_test, predictions_test)
             r2_test = r2_score(y_test, predictions_test)
 
             # Collect results
             results = {
                 'MSE': {'Validation': mse_val, 'Test': mse_test},
+                'RMSE': {'Validation': rmse_val, 'Test': rmse_test}, 
                 'MAE': {'Validation': mae_val, 'Test': mae_test},
                 'R2': {'Validation': r2_val, 'Test': r2_test}
             }
             # Add more metrics as needed
-            print(f"Validation MSE: {mse_val}, Validation MAE: {mae_val}, Validation R2: {r2_val}")
-            print(f"Test MSE: {mse_test}, Test MAE: {mae_test}, Test R2: {r2_test}")
+            print(f"Validation MSE: {mse_val}, Validation RMSE: {rmse_val}, Validation MAE: {mae_val}, Validation R2: {r2_val}")
+            print(f"Test MSE: {mse_test}, Test RMSE: {rmse_test}, Test MAE: {mae_test}, Test R2: {r2_test}")
         
         return results
         #save_results(results, args.dataset_name, args.model)
 
-    def save_results(self, results, dataset_name, model, results_dir='pubchem_results'):
+    def save_results(self, results, dataset_name, model, results_dir='finetune_results'):
         """
         Saves the evaluation results to a CSV file.
 
@@ -255,15 +249,48 @@ class MMPmodel:
         with open(file_path, mode='w', newline='') as file:
             writer = csv.writer(file)
             # Write the headers
-            writer.writerow(['Metric', 'Validation', 'Test'])
+            writer.writerow(['Metric', 'Test'])
             # Write the data
             for key, value in results.items():
-                writer.writerow([key, value['Validation'], value['Test']])
+                writer.writerow([key, value['Test']])
         print(f"Results saved to {file_path}")
 
 
+class ModelTuner:
+    def __init__(self, model, param_grid, X_train, y_train, X_val, y_val):
+        self.model = model
+        self.param_grid = param_grid
+        self.X_train = X_train
+        self.y_train = y_train
+        self.X_val = X_val
+        self.y_val = y_val
+        self.task_binary = False
+
+    def tune_parameters(self):
+        if self.task_binary:
+            # Define the AUC scorer
+            auc_scorer = make_scorer(roc_auc_score, needs_proba=True, greater_is_better=True)
+            # Initialize GridSearchCV
+            grid_search = GridSearchCV(estimator=self.model, param_grid=self.param_grid, scoring=auc_scorer, cv=5, verbose=1)
+        # Initialize GridSearchCV with MSE scorer
+        else:
+            # Define the MSE scorer
+            mse_scorer = make_scorer(mean_squared_error, greater_is_better=False)
+            grid_search = GridSearchCV(estimator=self.model, param_grid=self.param_grid, scoring=mse_scorer, cv=5, verbose=1)
     
-    # Save results to CSV
+        # Fit GridSearchCV
+        grid_search.fit(self.X_train, self.y_train)
+        
+        # Print the best parameters and the best score
+        print("Best Parameters:", grid_search.best_params_)
+        if self.task_binary:
+            print("Best AUC Score:", grid_search.best_score_)
+        else:
+            print("Best MSE Score:", -grid_search.best_score_)  # Multiply by -1 to convert back to positive value
+    
+        
+        # Return the best estimator
+        return grid_search.best_estimator_
 
 
 # Note: Ensure X_test and y_test are passed to the function along with other parameters
@@ -271,11 +298,69 @@ class MMPmodel:
 # Main function
 if __name__ == "__main__":
     args = parse_args()
+    loader = DatasetLoader()
+    dataset = loader.get_dataset(args.dataset_name)
+    X_train, X_val, X_test, y_train, y_val, y_test = loader.process_dataset(args.dataset_name, dataset)
     mmp_model = MMPmodel(args)
-    dataset = mmp_model.get_dataset(args.dataset_name)
-    X_train, X_val, X_test, y_train, y_val, y_test = mmp_model.process_dataset(dataset)
-    mmp_model.get_task_binary(y_train)
-    model = mmp_model.get_model(args.model)
+    task_binary = False
+    # dataset = mmp_model.get_dataset(args.dataset_name)
+    # X_train, X_val, X_test, y_train, y_val, y_test = mmp_model.process_dataset(dataset)
+    # mmp_model.task_binary(y_train)
+    if args.model == 'all':
+        for model in ['XGB', 'RF']:
+            model_instance = mmp_model.get_model(model)  # Instantiate the model
+            if model == 'SVM':
+                # Tune the parameters for SVM
+                param_grid = {
+                    'C': [0.1, 1, 10, 100],
+                    'gamma': [1, 0.1, 0.01, 0.001],
+                    'kernel': ['rbf', 'linear', 'poly', 'sigmoid']
+                }
+                
+            elif model == 'XGB':
+                # Tune the parameters for XGB
+                param_grid = {
+                    'n_estimators': [100, 200, 300, 400, 500],
+                    'max_depth': [3, 4, 5],
+                    'learning_rate': [0.05, 0.1, 0.3],
+                    'subsample': [0.7, 0.8, 0.9],
+                    'colsample_bytree': [0.7, 0.8, 0.9],
+                    'colsample_bylevel': [0.7, 0.8, 0.9],
+                    #add more parameters as needed
+                    'gamma': [0.1, 0.2, 0.3],
+                    'min_child_weight': [1, 3, 6],
+                    }
+                
+            elif model == 'RF':
+                # Tune the parameters for RF
+                if task_binary:
+                    param_grid = {
+                        'n_estimators': [100, 200, 500],
+                        'max_features': ['sqrt', 'log2', None],
+                        'max_depth': [4, 6, 8],
+                        'criterion': ['gini', 'entropy']
+                    }
+                else:
+                    param_grid = {
+                        'n_estimators': [100, 200, 500],
+                        'max_features': ['sqrt', 'log2', None],
+                        'max_depth': [4, 6, 8],
+                        'criterion': ['mse', 'mae'],  # Corrected criteria
+                    }
+            tuner = ModelTuner(model_instance, param_grid, X_train, y_train, X_val, y_val)
+            model_instance = tuner.tune_parameters()
+
+            results = mmp_model.train_evaluate_model(X_train, X_val, X_test, y_train, y_val, y_test, model_instance)
+            mmp_model.save_results(results, args.dataset_name, model)
+    # model = mmp_model.get_model(args.model)
+    # param_grid = {
+    # 'n_estimators': [100, 200, 500],
+    # 'max_features': ['auto', 'sqrt'],
+    # 'max_depth': [4, 6, 8],
+    # 'criterion': ['squared_error', 'absolute_error', 'poisson', 'friedman_mse']  # Corrected criteria
+    # }
+    # tuner = ModelTuner(model, param_grid, X_train, y_train, X_val, y_val)
+    # best_model = tuner.tune_parameters()
     results = mmp_model.train_evaluate_model(X_train, X_val, X_test, y_train, y_val, y_test, model)
     mmp_model.save_results(results, args.dataset_name, args.model)
 
