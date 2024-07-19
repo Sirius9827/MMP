@@ -11,6 +11,7 @@ from skfp.fingerprints import MQNsFingerprint
 from skfp.preprocessing import MolFromSmilesTransformer, ConformerGenerator
 from rdkit import DataStructs
 from sklearn.preprocessing import StandardScaler
+from padelpy import from_smiles
 
 # Fingerprints are classified based on binary, count, real-valued features
 
@@ -98,6 +99,10 @@ class FingerprintProcessor:
         """Generate Autocorr fingerprints."""
         fp = AutocorrFingerprint()
         return fp.transform(smiles_list)
+    
+    def padel_fp(self, smiles_list):
+        fp = from_smiles(smiles_list.tolist(), fingerprints=True, descriptors=True, threads=4)
+        return fp
 
     #get substructure fingerprints
     #def substurcture_fp(self, smiles_list):
@@ -121,11 +126,12 @@ class FingerprintProcessor:
         """Concatenate different types of fingerprints into a single feature vector per molecule."""
         # Generate fingerprints
         pubchem_fps = self.pubchem_fp(smiles_list)
-        morgan_fps = self.Morgan_fp(smiles_list)
+        # morgan_fps = self.Morgan_fp(smiles_list)
         #substructure_fps = self.get_substructure_fingerprints(smiles_list)
-        maccs_fps = self.MACCSkeys_fp(smiles_list)
+        # maccs_fps = self.MACCSkeys_fp(smiles_list)
         laggner_fps = self.laggner_fp(smiles_list)
-        fcep_fps = self.ECFP_fp(smiles_list)
+        # fcep_fps = self.ECFP_fp(smiles_list)
+        # padel_fps = self.padel_fp(smiles_list)
 
         # # check data_type
         # print(type(pubchem_fps))
@@ -136,18 +142,19 @@ class FingerprintProcessor:
               
 
         concatenated_fps = []
-        for pubchem_fp, morgan_fp, maccs_fp, laggner_fp, fcep_fp in zip(pubchem_fps, morgan_fps, maccs_fps, laggner_fps, fcep_fps):
+        for pubchem_fp, laggner_fp in zip(pubchem_fps,laggner_fps):
             # Convert RDKit ExplicitBitVect to list of integers
-            np_morgan_fp = np.array(morgan_fp)
+            # np_morgan_fp = np.array(morgan_fp)
             #np_substructure_fp = np.array(substructure_fp)
-            np_maccs_fp = np.array(maccs_fp)
-            np_fcep_fp = np.array(fcep_fp)
+            # np_maccs_fp = np.array(maccs_fp)
+            # np_fcep_fp = np.array(fcep_fp)
+            # np_padel_fp = np.array(padel_fp)
             
             # Concatenate the fingerprints
-            concatenated_fp = np.concatenate((pubchem_fp, np_morgan_fp, np_maccs_fp, laggner_fp, np_fcep_fp))
+            concatenated_fp = np.concatenate([pubchem_fp, laggner_fp])
             concatenated_fps.append(concatenated_fp)
 
-            # # Convert concatenated_fps to a NumPy array
+            # Convert concatenated_fps to a NumPy array
             # concatenated_fps_array = np.array(concatenated_fps)
 
             # # Instantiate the StandardScaler
@@ -162,6 +169,6 @@ class FingerprintProcessor:
 '''
 smiles_data = ['CCO', 'CC', 'CCC']
 processor = FingerprintProcessor()
-rdkit_fps = processor.process_data(smiles_data, 'rdkit')
-print(rdkit_fps)
+fps = processor.cancat_fp(smiles_data)
+print(fps)
 '''
