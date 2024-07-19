@@ -1,4 +1,5 @@
 import argparse
+from collections import defaultdict
 from math import sqrt
 import numpy as np  
 from rdkit import Chem  
@@ -76,6 +77,9 @@ class DatasetLoader:
         if dataset_name in ['ToxCast', 'Tox21']:
             # Toxicity prediction datasets
             label_lists = retrieve_label_name_list(dataset_name)
+            num_labels = len(label_lists)
+            print(f"Number of labels in {dataset_name}: {num_labels}")
+
             return Tox(name=dataset_name, label_name=label_lists[0])
         elif dataset_name in ['ClinTox']:
             return Tox(name='ClinTox')
@@ -122,7 +126,7 @@ class DatasetLoader:
 class MMPmodel:
     def __init__(self, args):
         self.args = args
-        self.task_binary = False
+        self.task_binary = True
         # self.data = self.get_dataset(args.dataset_name)
         self.X_train = X_train
         self.X_val = X_val
@@ -266,7 +270,7 @@ class ModelTuner:
         self.X_val = X_val
         self.y_val = y_val
         self.n_jobs = n_jobs
-        self.task_binary = False
+        self.task_binary = True
 
     def tune_parameters(self):
         if self.task_binary:
@@ -300,14 +304,12 @@ class ModelTuner:
 # Main function
 if __name__ == "__main__":
     args = parse_args()
+    # # for single task prediction datasets
     loader = DatasetLoader()
     dataset = loader.get_dataset(args.dataset_name)
     X_train, X_val, X_test, y_train, y_val, y_test = loader.process_dataset(args.dataset_name, dataset)
     mmp_model = MMPmodel(args)
-    task_binary = False
-    # dataset = mmp_model.get_dataset(args.dataset_name)
-    # X_train, X_val, X_test, y_train, y_val, y_test = mmp_model.process_dataset(dataset)
-    # mmp_model.task_binary(y_train)
+    task_binary = True
     if args.model == 'all':
         for model in ['SVM', 'XGB', 'RF']:
             model_instance = mmp_model.get_model(model)  # Instantiate the model
@@ -316,7 +318,8 @@ if __name__ == "__main__":
                 param_grid = {
                     'C': [0.1, 1, 10, 100],
                     'gamma': [0.2, 0.1, 0.01, 0.001],
-                    'kernel': ['rbf']
+                    'kernel': ['rbf'],
+                    'probability': [True]
                 }
                 
             elif model == 'XGB':
@@ -347,20 +350,9 @@ if __name__ == "__main__":
 
             tuner = ModelTuner(model_instance, param_grid, X_train, y_train, X_val, y_val, n_jobs=args.n_jobs)
             model_instance = tuner.tune_parameters()
-
+            mmp_model = MMPmodel(args)
             results = mmp_model.train_evaluate_model(X_train, X_val, X_test, y_train, y_val, y_test, model_instance)
             mmp_model.save_results(results, args.dataset_name, model)
-    # model = mmp_model.get_model(args.model)
-    # param_grid = {
-    # 'n_estimators': [100, 200, 500],
-    # 'max_features': ['auto', 'sqrt'],
-    # 'max_depth': [4, 6, 8],
-    # 'criterion': ['squared_error', 'absolute_error', 'poisson', 'friedman_mse']  # Corrected criteria
-    # }
-    # tuner = ModelTuner(model, param_grid, X_train, y_train, X_val, y_val)
-    # best_model = tuner.tune_parameters()
-    results = mmp_model.train_evaluate_model(X_train, X_val, X_test, y_train, y_val, y_test, model)
-    mmp_model.save_results(results, args.dataset_name, args.model)
 
 exit(0)
 def preprocess_dataset(args):
