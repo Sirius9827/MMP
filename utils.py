@@ -1,7 +1,6 @@
 from math import sqrt
 import numpy as np  
 from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
-#from sklearn.svm import SVC
 from sklearn.svm import SVC, SVR
 from xgboost import XGBClassifier, XGBRegressor
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
