@@ -12,12 +12,6 @@ from sklearn.metrics import make_scorer, roc_auc_score
 
 import pandas as pd  
 #from descriptors.rdNormalizedDescriptors import RDKit2DNormalized
-
-#import tdc required libraries
-# TDC benchmark group: admet_group
-
-from DeepPurpose.utils import *
-
 from allfingerprints import FingerprintProcessor
 
 import csv
@@ -248,7 +242,8 @@ class MMPmodel:
         # print(f"Best average score: {avg_scores[best_index]}")
         
         # Return the best estimator
-        return grid_search.best_estimator_, grid_search.best_params_
+        # return grid_search.best_estimator_, grid_search.best_params_
+        return auc, rmse
 
 def save_results(results, dataset_name, model, results_dir):
     """
