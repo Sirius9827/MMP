@@ -11,12 +11,6 @@ from sklearn.metrics import make_scorer, roc_auc_score
 
 import pandas as pd  
 #from descriptors.rdNormalizedDescriptors import RDKit2DNormalized
-
-#import tdc required libraries
-# TDC benchmark group: admet_group
-
-from DeepPurpose.utils import *
-
 from allfingerprints import FingerprintProcessor
 
 import csv
