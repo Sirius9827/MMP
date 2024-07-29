@@ -107,15 +107,15 @@ if __name__ == '__main__':
 
     # Fit the model with the best parameters on the full training data and predict on the test set
     results = []
+    print(len(splits))
     for X_test, y_test in splits:
         model.set_params(**best_params)
-        model.fit(X_test, y_test)
         y_pred = model.predict(X_test)
         if task_binary:
-            auc = roc_auc_score(y_val, predictions_val)
+            auc = roc_auc_score(y_pred, y_test)
             results.append(auc)
         else:
-            rmse = root_mean_squared_error(y_val, predictions_val)
+            rmse = root_mean_squared_error(y_pred, y_test)
             results.append(rmse)
     mean_score = np.mean(results)
     std_score = np.std(results)
