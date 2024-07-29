@@ -152,19 +152,6 @@ class MMPmodel:
             print(f"Test MSE: {mse_test}, Test RMSE: {rmse_test}, Test MAE: {mae_test}, Test R2: {r2_test}")
         
         return results
-        #save_results(results, args.dataset_name, args.model)
-
-
-class ModelTuner:
-    def __init__(self, model, X, Y, task_binary, seed, n_jobs=-1):
-        self.model = model
-        self.X = X
-        self.Y = Y
-        self.n_jobs = n_jobs
-        self.task_binary = task_binary
-        self.best_params_ = None
-        self.best_model_ = None
-        self.seed = seed
 
     def tune_para(self):
         mmp = MMPmodel(self.model, self.X, self.Y, self.task_binary, self.seed)
