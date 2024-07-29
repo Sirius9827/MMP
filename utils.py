@@ -1,6 +1,6 @@
 from math import sqrt
 import numpy as np  
-from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
+from sklearn.model_selection import KFold, ParameterGrid, StratifiedKFold, train_test_split
 #from sklearn.svm import SVC
 from sklearn.svm import SVC, SVR
 from xgboost import XGBClassifier, XGBRegressor
@@ -59,6 +59,8 @@ class MMPmodel:
     def __init__(self, model_name, X, Y, task_binary, seed):
         self.X = X
         self.Y = Y
+        # self.X_val = X_val
+        # self.y_val = y_val
         self.model_name = model_name
         self.task_binary = task_binary
         self.seed = seed
@@ -69,18 +71,20 @@ class MMPmodel:
         if self.task_binary:
             if model_name == 'XGB':
                 return XGBClassifier(
-                    tree_method='gpu_hist',
+                    tree_method='hist',
                     device = 'cuda',
-                    random_state=seed
+                    random_state=seed,
+                    n_jobs=-1
                 )
             elif model_name == 'RF':
                 return RandomForestClassifier(
-                    random_state=seed
+                    random_state=seed,
+                    n_jobs=-1
                 )
             elif model_name == 'SVM':
                 return SVC(   
                     probability=True,
-                    random_state=seed
+                    random_state=seed,
                 )
             else:
                 raise ValueError("Model not supported")
@@ -89,15 +93,18 @@ class MMPmodel:
             if model_name == 'XGB':
                 return XGBRegressor(
                     objective='reg:squarederror',
-                    random_state=seed
+                    random_state=seed,
+                    n_jobs=-1
                 )
             elif model_name == 'RF':
                 return RandomForestRegressor(
-                    random_state=seed
+                    random_state=seed,
+                    n_jobs=-1
                 )
             elif model_name == 'SVM':
                 return SVR(    
-                    random_state=seed
+                    random_state=seed,
+                    n_jobs=-1
                 )
             else:
                 raise ValueError("Model not supported")
@@ -154,7 +161,7 @@ class MMPmodel:
         return results
 
     def tune_para(self):
-        mmp = MMPmodel(self.model, self.X, self.Y, self.task_binary, self.seed)
+        mmp = MMPmodel(self.model, self.X, self.Y, self.X_val, self.y_val, self.task_binary, self.seed)
         get_mdl = mmp.get_model(self.model, self.seed)
         if self.model == 'SVM':
              param_grid = {
@@ -188,31 +195,57 @@ class MMPmodel:
             else:
                 param_grid['criterion'] = ['squared_error']
 
-        cv_results = []
+        param_combinations = list(ParameterGrid(param_grid))
+        best_score = -np.inf if self.task_binary else np.inf
+        score = []
+        for params in param_combinations:
+            get_mdl.set_params(**params)
+            get_mdl.fit(self.X, self.Y)
+            predictions_val = get_mdl.predict(self.X_val)
+            if self.task_binary:
+                auc = roc_auc_score(self.y_val, predictions_val)
+                if auc > best_score:
+                    best_score = auc
+                    best_params = params
+                    y_pred = get_mdl.predict(self.X_test)
+
+            else:
+                rmse = root_mean_squared_error(self.y_val, predictions_val)
+                if rmse < best_score:
+                    best_score = rmse
+                    best_params = params
+                    y_pred = get_mdl.predict(self.X_test)
+            
+
+        # cv_results = []
         auc = make_scorer(roc_auc_score, needs_proba=True, greater_is_better=True)
         rmse = make_scorer(mean_squared_error, greater_is_better=False)
-        best_score = -np.inf if self.task_binary else np.inf
 
-        if self.task_binary:
-            # Initialize GridSearchCV with AUC as the scoring metric
-            skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=self.seed)
-            grid_search = GridSearchCV(estimator=get_mdl, param_grid=param_grid, scoring=auc, cv=skf, verbose=1, n_jobs=self.n_jobs)
-        else:
-            # Initialize GridSearchCV with RMSE as the scoring metric
-            kf = KFold(n_splits=5, shuffle=True, random_state=self.seed)
-            grid_search = GridSearchCV(estimator=get_mdl, param_grid=param_grid, scoring=rmse, cv=kf, verbose=1, n_jobs=self.n_jobs)
-        print(f"the model is {get_mdl}")
-        grid_search.fit(self.X, self.Y)
-        cv_results.append(grid_search.cv_results_['mean_test_score'])
 
-        # Calculate the average scores across different seeds
-        avg_scores = np.mean(cv_results, axis=0)
-        best_index = np.argmax(avg_scores)
-        best_params = grid_search.cv_results_['params'][best_index]
-        # best_model = get_mdl(param_grid=best_params)
 
-        print(f"Best parameters: {best_params}")
-        print(f"Best average score: {avg_scores[best_index]}")
+
+        # best_score = -np.inf if self.task_binary else np.inf
+
+        # if self.task_binary:
+        #     # Initialize GridSearchCV with AUC as the scoring metric
+        #     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=self.seed)
+        #     grid_search = GridSearchCV(estimator=get_mdl, param_grid=param_grid, scoring=auc, cv=skf, verbose=1, n_jobs=self.n_jobs)
+        # else:
+        #     # Initialize GridSearchCV with RMSE as the scoring metric
+        #     kf = KFold(n_splits=5, shuffle=True, random_state=self.seed)
+        #     grid_search = GridSearchCV(estimator=get_mdl, param_grid=param_grid, scoring=rmse, cv=kf, verbose=1, n_jobs=self.n_jobs)
+        # print(f"the model is {get_mdl}")
+        # grid_search.fit(self.X, self.Y)
+        # cv_results.append(grid_search.cv_results_['mean_test_score'])
+
+        # # Calculate the average scores across different seeds
+        # avg_scores = np.mean(cv_results, axis=0)
+        # best_index = np.argmax(avg_scores)
+        # best_params = grid_search.cv_results_['params'][best_index]
+        # # best_model = get_mdl(param_grid=best_params)
+
+        # print(f"Best parameters: {best_params}")
+        # print(f"Best average score: {avg_scores[best_index]}")
         
         # Return the best estimator
         return grid_search.best_estimator_, grid_search.best_params_
