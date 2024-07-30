@@ -66,16 +66,15 @@ if __name__ == '__main__':
     best_params = None
     best_std = None
 
-    # Split the data into 3 random splits
+    # Set the seeds
     seeds = [42, 1234, 7]
-    # splits = [train_test_split(X, Y, test_size=0.1, random_state=seed) for seed in seeds]
     results = []
     for seed in seeds:
         # Initialize the model 
         mmp = MMPmodel(args.model,X, Y, task_binary, seed)
         model = mmp.get_model(args.model, seed)
         # split the dataset
-        X_train, X_test, y_train, y_test = train_test_split(X, Y, seed)
+        X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.1, random_state=seed)
         # tune the model using randomized search, set iterations
         tuner = MMPmodel(args.model, X_train, y_train, task_binary, seed)
         # save parameters for the best model

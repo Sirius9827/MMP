@@ -9,6 +9,7 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.metrics import accuracy_score, roc_auc_score, mean_squared_error, mean_absolute_error, r2_score, root_mean_squared_error
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import make_scorer, roc_auc_score
+from sklearn.model_selection import RandomizedSearchCV, StratifiedKFold
 
 import pandas as pd  
 #from descriptors.rdNormalizedDescriptors import RDKit2DNormalized
@@ -97,8 +98,6 @@ class MMPmodel:
                 )
             elif model_name == 'SVM':
                 return SVR(    
-                    random_state=seed,
-                    n_jobs=-1
                 )
             else:
                 raise ValueError("Model not supported")
@@ -244,6 +243,31 @@ class MMPmodel:
         # Return the best estimator
         # return grid_search.best_estimator_, grid_search.best_params_
         return auc, rmse
+
+    def tune_randomized_search(self, X, Y, get_mdl, param_grid, task_binary, seed, n_iter=1000, n_jobs=-1):
+        best_score = -np.inf if task_binary else np.inf
+
+        if task_binary:
+            # Initialize RandomizedSearchCV with AUC as the scoring metric
+            skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
+            random_search = RandomizedSearchCV(estimator=get_mdl, param_distributions=param_grid, scoring='roc_auc', cv=skf, verbose=1, n_jobs=n_jobs, n_iter=n_iter, random_state=seed)
+        else:
+            # Initialize RandomizedSearchCV with RMSE as the scoring metric
+            kf = KFold(n_splits=5, shuffle=True, random_state=seed)
+            random_search = RandomizedSearchCV(estimator=get_mdl, param_distributions=param_grid, scoring='neg_root_mean_squared_error', cv=kf, verbose=1, n_jobs=n_jobs, n_iter=n_iter, random_state=seed)
+
+        random_search.fit(X, Y)
+        best_params = random_search.best_params_
+        best_model = random_search.best_estimator_
+
+        print(f"Best parameters: {best_params}")
+        print(f"Best score: {random_search.best_score_}")
+
+        return best_model, best_params
+
+    # Example usage
+    # best_model, best_params = tune_randomized_search(X, Y, get_mdl, param_grid, task_binary, seed)
+
 
 def save_results(results, dataset_name, model, results_dir):
     """
