@@ -1,4 +1,3 @@
-## CodeConstruct
 ### allfingerprint.py 
 generates fingerprints for corresponding smiles
 ### prediction_ML.py 
