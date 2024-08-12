@@ -1,4 +1,5 @@
 # Get all fingerprints for given molecule smiles list
+from multiprocessing import Pool
 from rdkit import Chem
 from rdkit.Chem import AllChem, rdMolDescriptors
 from rdkit.Chem import MACCSkeys
@@ -12,13 +13,40 @@ from skfp.preprocessing import MolFromSmilesTransformer, ConformerGenerator
 from rdkit import DataStructs
 from sklearn.preprocessing import StandardScaler
 from padelpy import from_smiles
-
+from descriptastorus.descriptors import rdNormalizedDescriptors
+from descriptors import rdDescriptors
 # Fingerprints are classified based on binary, count, real-valued features
+
+
+def generate_orthogonal_matrix(M):
+    # define the dimension of the matrix as M: fingerprint length
+    # Create a random matrix
+    random_matrix = np.random.randn(M, M)
+    # Perform QR decomposition
+    Q, R = np.linalg.qr(random_matrix)
+    return Q
 
 class FingerprintProcessor:
     def __init__(self):
         # Initialize any required settings or libraries
         pass
+
+    def rdkit2D_dp(self, smiles_list):
+        """Generate RDKit 2D normalized descriptors."""
+        generator = rdNormalizedDescriptors.RDKit2DNormalized()
+        _, descriptor_lists = generator.processSmiles(smiles_list)
+        descriptors_only = [desc[1:] for desc in descriptor_lists]
+        # Convert the list of descriptor lists into a 2D NumPy array
+        features_array = np.array(descriptors_only)
+        # Impute missing values
+        imputer = SimpleImputer(strategy='mean')
+        imputed_features_array = imputer.fit_transform(features_array)
+        return imputed_features_array
+        # with Pool(args.n_jobs) as pool:  
+        #     features_map = pool.imap(generator.process, smiless)  
+        #     arr = np.array(list(features_map))  
+        # Extract descriptors, excluding the first boolean value from each list
+
 
     def smiles_to_mol(self, smiles_list):
         """Convert SMILES to RDKit Mol objects."""
@@ -36,7 +64,7 @@ class FingerprintProcessor:
     def E3FP_fp(self, smiles_list):
         fp = E3FPFingerprint()
         mol_from_smiles = MolFromSmilesTransformer()
-        mols = mol_from_smiles.transform(smiles)
+        mols = mol_from_smiles.transform(smiles_list)
         conf_gen = ConformerGenerator()
         mols = conf_gen.transform(mols)
         return fp.transform(mols)
@@ -126,32 +154,16 @@ class FingerprintProcessor:
         """Concatenate different types of fingerprints into a single feature vector per molecule."""
         # Generate fingerprints
         pubchem_fps = self.pubchem_fp(smiles_list)
-        # morgan_fps = self.Morgan_fp(smiles_list)
-        #substructure_fps = self.get_substructure_fingerprints(smiles_list)
-        # maccs_fps = self.MACCSkeys_fp(smiles_list)
         laggner_fps = self.laggner_fp(smiles_list)
-        # fcep_fps = self.ECFP_fp(smiles_list)
-        # padel_fps = self.padel_fp(smiles_list)
-
-        # # check data_type
-        # print(type(pubchem_fps))
-        # print(type(morgan_fps))
-        # #print(type(substructure_fps))
-        # print(type(maccs_fps))
-        # print(type(laggner_fps))
-              
+        rdkit2d_dps = self.rdkit2D_dp(smiles_list)
 
         concatenated_fps = []
-        for pubchem_fp, laggner_fp in zip(pubchem_fps,laggner_fps):
+        for pubchem_fp, laggner_fp, rdkit2d_dp in zip(pubchem_fps,laggner_fps, rdkit2d_dps):
             # Convert RDKit ExplicitBitVect to list of integers
-            # np_morgan_fp = np.array(morgan_fp)
-            #np_substructure_fp = np.array(substructure_fp)
-            # np_maccs_fp = np.array(maccs_fp)
-            # np_fcep_fp = np.array(fcep_fp)
-            # np_padel_fp = np.array(padel_fp)
-            
+            np_rdkit2d_dp = np.array(rdkit2d_dp)
+            # print(type(np_rdkit2d_dp))
             # Concatenate the fingerprints
-            concatenated_fp = np.concatenate([pubchem_fp, laggner_fp])
+            concatenated_fp = np.concatenate([pubchem_fp, laggner_fp, np_rdkit2d_dp])
             concatenated_fps.append(concatenated_fp)
 
             # Convert concatenated_fps to a NumPy array
@@ -164,6 +176,31 @@ class FingerprintProcessor:
             # normalized_fps = scaler.fit_transform(concatenated_fps_array)
                     
         return concatenated_fps
+    
+    def orth_fp(self, smiles_list):
+        """Generate orthogonal fingerprints."""
+        # Generate fingerprints
+        pubchem_fps = self.pubchem_fp(smiles_list)
+        laggner_fps = self.laggner_fp(smiles_list)
+        
+        ortho_matrix = generate_orthogonal_matrix(pubchem_fps.shape[1])
+        pubchem_fps = np.dot(pubchem_fps, ortho_matrix)
+
+        ortho_matrix = generate_orthogonal_matrix(laggner_fps.shape[1])
+        laggner_fps = np.dot(laggner_fps, ortho_matrix)
+        rdkit2d_dps = self.rdkit2D_dp(smiles_list)
+
+        concatenated_fps = []
+        for pubchem_fp, laggner_fp, rdkit2d_dp in zip(pubchem_fps,laggner_fps, rdkit2d_dps):
+            # Convert RDKit ExplicitBitVect to list of integers
+            np_rdkit2d_dp = np.array(rdkit2d_dp)
+            # print(type(np_rdkit2d_dp))
+            # Concatenate the fingerprints
+            concatenated_fp = np.concatenate([pubchem_fp, laggner_fp, np_rdkit2d_dp])
+            concatenated_fps.append(concatenated_fp)
+
+        return concatenated_fps
+
 
 # Example usage
 '''
