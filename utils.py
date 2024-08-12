@@ -38,6 +38,12 @@ class DatasetLoader:
         X_features = fp.concat_fp(self.smiles)
         X_features = np.array(X_features)
         return X_features
+    
+    def orthogonal(self):
+        fp = FingerprintProcessor()
+        X_features = fp.orth_fp(self.smiles)
+        X_features = np.array(X_features)
+        return X_features
 
     def split(self, X, Y, seed):
         
@@ -78,8 +84,8 @@ class MMPmodel:
                 )
             elif model_name == 'SVM':
                 return SVC(   
-                    probability=True,
-                    random_state=seed,
+                    # probability=True,
+                    # random_state=seed,
                 )
             else:
                 raise ValueError("Model not supported")
@@ -97,7 +103,7 @@ class MMPmodel:
                     n_jobs=-1
                 )
             elif model_name == 'SVM':
-                return SVR(    
+                return SVR(  
                 )
             else:
                 raise ValueError("Model not supported")
