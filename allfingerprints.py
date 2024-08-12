@@ -183,20 +183,26 @@ class FingerprintProcessor:
         pubchem_fps = self.pubchem_fp(smiles_list)
         laggner_fps = self.laggner_fp(smiles_list)
         
-        ortho_matrix = generate_orthogonal_matrix(pubchem_fps.shape[1])
-        pubchem_fps = np.dot(pubchem_fps, ortho_matrix)
+        fps = []
+        for pubchem_fp, laggner_fp in zip(pubchem_fps, laggner_fps):
+            fp = np.concatenate([pubchem_fp, laggner_fp])
+            fps.append(fp)
+        fps = np.array(fps)
+        print(fps.shape)
+        ortho_matrix = generate_orthogonal_matrix(fps.shape[1])
+        ortho_fps = np.dot(fps, ortho_matrix)
 
-        ortho_matrix = generate_orthogonal_matrix(laggner_fps.shape[1])
-        laggner_fps = np.dot(laggner_fps, ortho_matrix)
+        # ortho_matrix = generate_orthogonal_matrix(laggner_fps.shape[1])
+        # laggner_fps = np.dot(laggner_fps, ortho_matrix)
         rdkit2d_dps = self.rdkit2D_dp(smiles_list)
 
         concatenated_fps = []
-        for pubchem_fp, laggner_fp, rdkit2d_dp in zip(pubchem_fps,laggner_fps, rdkit2d_dps):
+        for ortho_fp, rdkit2d_dp in zip(ortho_fps, rdkit2d_dps):
             # Convert RDKit ExplicitBitVect to list of integers
             np_rdkit2d_dp = np.array(rdkit2d_dp)
             # print(type(np_rdkit2d_dp))
             # Concatenate the fingerprints
-            concatenated_fp = np.concatenate([pubchem_fp, laggner_fp, np_rdkit2d_dp])
+            concatenated_fp = np.concatenate([ortho_fp, np_rdkit2d_dp])
             concatenated_fps.append(concatenated_fp)
 
         return concatenated_fps
