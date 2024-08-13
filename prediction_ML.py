@@ -71,9 +71,14 @@ if __name__ == '__main__':
     best_std = None
 
     # Split the data into 3 random splits
-    seeds = [42, 1234, 7]
+    if task_binary:
+        seeds = [42, 1234, 7]
+    # for regression tasks we use 10 random splits to get reasonable estimates of standard deviation
+    else:
+        seeds = [42, 1234, 7, 100, 200, 300, 400, 500, 600, 700]
     # splits = [train_test_split(X, Y, test_size=0.1, random_state=seed) for seed in seeds]
     splits = []
+    print("Number of splits:", len(splits))
 
     for params in param_combinations:
         scores = []
@@ -108,18 +113,21 @@ if __name__ == '__main__':
     # Fit the model with the best parameters on the full training data and predict on the test set
     results = []
     print(len(splits))
+    print(splits)
     for X_test, y_test in splits:
         model.set_params(**best_params)
         y_pred = model.predict(X_test)
         if task_binary:
             auc = roc_auc_score(y_pred, y_test)
             results.append(auc)
+            # print("AUC:", auc)
         else:
             rmse = root_mean_squared_error(y_pred, y_test)
             results.append(rmse)
+            # print("RMSE:", rmse)
     mean_score = np.mean(results)
     std_score = np.std(results)
-    
+    print(len(results))
     if task_binary:
         rsl_save = {'AUC': {'mean': mean_score, 'std': std_score}}
     else:
@@ -130,29 +138,6 @@ if __name__ == '__main__':
     print("Best Average Score on test:", mean_score)
     print("Standard Deviation of Score:", std_score)
 
-    # seeds = [42, 1234, 7]
-    # results = []
-    # for seed in seeds:
-    #     # tune hyperparameters for the model and dataset
-    #     X_train, X_val, X_test, y_train, y_val, y_test = dataloader.split(X, Y, seed)
-    #     tuner = MMPmodel(args.model, X_train, y_train, X_val, y_val, task_binary, seed, args.n_jobs)
-    #     best_model, best_param = tuner.tune_para()
-    #     # save parameters for the best model
-    #     predictions_val = best_model.predict(X_test)
-    #     if task_binary:
-    #         auc = roc_auc_score(y_test, predictions_val)
-    #         results.append(auc)
-    #     else:
-    #         rmse = root_mean_squared_error(y_test, predictions_val)
-    #         results.append(rmse)
-    # if task_binary:
-    #     auc_mean = np.mean(results)
-    #     auc_std = np.std(results)
-    #     rsl_save = {'AUC': {'mean': auc_mean, 'std': auc_std}}
-    # else:
-    #     rmse_mean = np.mean(results)
-    #     rmse_std = np.std(results)
-    #     rsl_save = {'RMSE': {'mean': rmse_mean, 'std': rmse_std}}
     save_results(rsl_save, args.dataset_name, args.model, args.output_dir)
 
 

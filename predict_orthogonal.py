@@ -19,7 +19,7 @@ def parse_args():
     parser.add_argument("-d", "--dataset_name", type=str, required=True, help="Name of the dataset file")
     parser.add_argument("-m","--model", type=str, required=True, choices=['SVM', 'XGB', 'RF', 'all'], help="Model to use")
     parser.add_argument("-j","--n_jobs", type=int, default=-1, help="Number of jobs to run in parallel.")
-    parser.add_argument("-o","--output_dir", type=str, default="results", help="Directory to save results")
+    parser.add_argument("-o","--output_dir", type=str, default="orth_results", help="Directory to save results")
     #parser.add_argument("--n_jobs", type=int, default=32, help="Number of jobs to run in parallel")
     return parser.parse_args()
 
@@ -71,7 +71,11 @@ if __name__ == '__main__':
     best_std = None
 
     # Split the data into 3 random splits
-    seeds = [42, 1234, 7]
+    if task_binary:
+        seeds = [42, 1234, 7]
+    # for regression tasks we use 10 random splits to get reasonable estimates of standard deviation
+    else:
+        seeds = [42, 1234, 7, 100, 200, 300, 400, 500, 600, 700]
     # splits = [train_test_split(X, Y, test_size=0.1, random_state=seed) for seed in seeds]
     splits = []
 

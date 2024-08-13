@@ -66,8 +66,13 @@ if __name__ == '__main__':
     best_params = None
     best_std = None
 
-    # Set the seeds
-    seeds = [42, 1234, 7]
+    # Split the data into 3 random splits
+    if task_binary:
+        seeds = [42, 1234, 7]
+    # for regression tasks we use 10 random splits to get reasonable estimates of standard deviation
+    else:
+        seeds = [42, 1234, 7, 100, 200, 300, 400, 500, 600, 700]
+        
     results = []
     for seed in seeds:
         # Initialize the model 
@@ -78,7 +83,7 @@ if __name__ == '__main__':
         # tune the model using randomized search, set iterations
         tuner = MMPmodel(args.model, X_train, y_train, task_binary, seed)
         # save parameters for the best model
-        best_model, best_param = tuner.tune_randomized_search(X_train, y_train, model, param_grid, task_binary, iterations=1000)
+        best_model, best_param = tuner.tune_randomized_search(X_train, y_train, model, param_grid, task_binary, seed, n_iter=200)
         # get the predictions on test set
         predictions_val = best_model.predict(X_test)
         if task_binary:
@@ -93,7 +98,7 @@ if __name__ == '__main__':
         auc_std = np.std(results)
         rsl_save = {'AUC': {'mean': auc_mean, 'std': auc_std}}
     else:
-        rmse_mean = np.mean(results)
+        rmse_mean = -np.mean(results)
         rmse_std = np.std(results)
         rsl_save = {'RMSE': {'mean': rmse_mean, 'std': rmse_std}}
     save_results(rsl_save, args.dataset_name, args.model, args.output_dir)
