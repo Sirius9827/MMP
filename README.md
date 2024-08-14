@@ -22,3 +22,9 @@ generates fingerprints for corresponding smiles
 ### multitask.py 
 is for spliting multi-task prediction to single-task prediction and get average metric score
 
+### trsf_mmp.py
+Please copy vocab.pkl and trfm_12_23000.pkl to smiles_transformer/data file folder
+```python
+python trsf_mmp.py -i dataset.csv
+```
+
