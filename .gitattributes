@@ -1,0 +1,4 @@
+*.largefileextension filter=lfs diff=lfs merge=lfs -text
+*.pkl filter=lfs diff=lfs merge=lfs -text
+vocab.pkl filter=lfs diff=lfs merge=lfs -text
+trfm_12_23000.pkl filter=lfs diff=lfs merge=lfs -text
